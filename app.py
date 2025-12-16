@@ -33,22 +33,24 @@ if df is None:
 food_list = sorted(df['food_type'].unique().tolist())
 pesticide_list = sorted(df['pesticide_name'].unique().tolist())
 
-# --- 3. 이력 저장소 (Session State) ---
+# --- 3. 이력 저장소 (단위 추가됨!) ---
 if 'history_df' not in st.session_state:
     st.session_state['history_df'] = pd.DataFrame(columns=[
-        '검사일자', '의뢰부서', '식품명', '농약명', '검출량', '허용기준', '초과량', '판정', '조치내용', '비고'
+        '검사일자', '의뢰부서', '식품명', '농약명', 
+        '검출량 (mg/kg)', '허용기준 (mg/kg)', '초과량 (mg/kg)', 
+        '판정', '조치내용', '비고'
     ])
 
-# 이력 추가 함수
+# 이력 추가 함수 (컬럼명 변경 반영)
 def add_to_history(dept, food, pest, amount, limit, action, note=""):
     new_data = {
         '검사일자': datetime.now().strftime("%Y-%m-%d %H:%M"),
         '의뢰부서': dept,
         '식품명': food,
         '농약명': pest,
-        '검출량': amount,
-        '허용기준': limit,
-        '초과량': round(amount - limit, 4),
+        '검출량 (mg/kg)': amount,
+        '허용기준 (mg/kg)': limit,
+        '초과량 (mg/kg)': round(amount - limit, 4),
         '판정': '부적합',
         '조치내용': action,
         '비고': note
@@ -58,7 +60,7 @@ def add_to_history(dept, food, pest, amount, limit, action, note=""):
     )
 
 # --- 4. 탭 메뉴 구성 ---
-tab1, tab2, tab3 = st.tabs(["🔍 개별 판정", "📑 일괄 판정", "📋 부적합 이력 관리 (편집가능)"])
+tab1, tab2, tab3 = st.tabs(["🔍 개별 판정", "📑 일괄 판정", "📋 부적합 이력 관리"])
 
 # ==========================================
 # [탭 1] 개별 판정
@@ -81,6 +83,7 @@ with tab1:
 
                 st.divider()
                 col_res1, col_res2 = st.columns(2)
+                # 개별 판정은 카드 형태라 값 뒤에 단위를 붙여주는 게 더 예쁩니다.
                 col_res1.metric("허용 기준", f"{limit} mg/kg")
                 
                 if diff > 0:
@@ -110,7 +113,8 @@ with tab2:
     st.header("엑셀 일괄 판정 & 자동 저장")
     st.info("부적합 발생 시 아래 입력된 정보로 **자동 저장**됩니다.")
     
-    with st.expander("📝 검사 정보 입력 (필수)", expanded=True):
+    # ★ 수정됨: 제목에서 '(필수)' 삭제 ★
+    with st.expander("📝 검사 정보 입력", expanded=True):
         bc1, bc2 = st.columns(2)
         with bc1: 
             batch_dept = st.text_input("의뢰 부서 (예: 품질팀)", value="품질관리팀", key="b_dept")
@@ -153,7 +157,8 @@ with tab2:
                     results.append([f, p, amt, limit_val, status, note])
                     progress_bar.progress((i + 1) / len(batch_df))
 
-                res_df = pd.DataFrame(results, columns=['식품', '농약', '검출량', '기준', '판정', '비고'])
+                # ★ 수정됨: 컬럼명에 단위(mg/kg) 추가 ★
+                res_df = pd.DataFrame(results, columns=['식품', '농약', '검출량 (mg/kg)', '기준 (mg/kg)', '판정', '비고'])
                 
                 def color_row(row):
                     return ['background-color: #ffcccc'] * len(row) if "부적합" in row['판정'] else [''] * len(row)
@@ -169,17 +174,16 @@ with tab2:
                 st.error(f"오류: {e}")
 
 # ==========================================
-# [탭 3] 부적합 이력 관리 (편집 기능 추가!)
+# [탭 3] 부적합 이력 관리
 # ==========================================
 with tab3:
     st.header("📋 부적합 관리 대장")
-    st.caption("💡 팁: 표 안의 내용을 더블 클릭하면 수정할 수 있습니다! (행 삭제도 가능)")
+    st.caption("💡 표 안의 내용을 더블 클릭하면 수정할 수 있습니다!")
 
     if st.session_state['history_df'].empty:
         st.write("아직 등록된 이력이 없습니다.")
     else:
-        # ★ 여기가 핵심! data_editor를 사용해 수정 가능하게 변경 ★
-        # num_rows="dynamic"을 넣으면 행 추가/삭제도 가능해집니다.
+        # data_editor 사용 (편집 가능)
         edited_df = st.data_editor(
             st.session_state['history_df'],
             use_container_width=True,
@@ -187,10 +191,10 @@ with tab3:
             key="history_editor"
         )
         
-        # 수정된 내용이 있으면 세션에 다시 저장 (동기화)
+        # 동기화
         if not edited_df.equals(st.session_state['history_df']):
             st.session_state['history_df'] = edited_df
-            st.rerun() # 화면 새로고침해서 반영
+            st.rerun()
 
         st.divider()
         
