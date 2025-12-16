@@ -1,77 +1,78 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine, text
 import os
 
 # --- 1. 기본 설정 ---
 st.set_page_config(page_title="잔류농약 판정기", page_icon="🥦")
 st.title("🥦 잔류농약 적합 판정 시스템 (CSV 버전)")
 
-# --- 2. 데이터 로딩 (CSV 방식) ---
-# 보안 문제로 DB 파일 대신 CSV(글자 파일)를 읽어서 즉석에서 DB를 만듭니다.
-@st.cache_resource
-def get_engine_from_csv():
+# --- 2. 데이터 로딩 (가장 단순한 방법!) ---
+@st.cache_data
+def load_data():
     csv_file = 'data.csv'
     
+    # 파일이 있는지 확인
     if not os.path.exists(csv_file):
-        st.error("🚨 'data.csv' 파일이 없습니다!")
-        st.warning("GitHub에서 'Create new file'을 눌러 data.csv를 만들고 내용을 붙여넣으세요.")
-        st.stop()
+        return None
     
-    # CSV 파일을 읽어서 메모리(RAM) 속에 임시 DB를 만듭니다.
+    # CSV 파일을 그냥 엑셀 읽듯이 읽어옵니다.
     try:
         df = pd.read_csv(csv_file)
-        
-        # 기계적인 처리를 위해 메모리 DB 생성
-        engine = create_engine('sqlite:///:memory:')
-        df.to_sql('pesticide_limits', engine, index=False)
-        return engine
+        # 혹시 모를 공백 제거 (안전장치)
+        df['food_type'] = df['food_type'].astype(str).str.strip()
+        df['pesticide_name'] = df['pesticide_name'].astype(str).str.strip()
+        return df
     except Exception as e:
-        st.error(f"데이터 로딩 중 오류 발생: {e}")
-        st.stop()
+        st.error(f"데이터 파일 읽기 실패: {e}")
+        return None
 
-# 엔진 가동!
-with st.spinner('데이터를 해독하고 있습니다... ⏳'):
-    engine = get_engine_from_csv()
+# 데이터 불러오기
+with st.spinner('데이터를 불러오는 중입니다... ⏳'):
+    df = load_data()
 
-# --- 3. 목록 가져오기 ---
-@st.cache_data
-def get_lists():
-    conn = engine.connect()
-    # DISTINCT를 이용해 중복 제거
-    df_food = pd.read_sql("SELECT DISTINCT food_type FROM pesticide_limits ORDER BY food_type", conn)
-    df_pesticide = pd.read_sql("SELECT DISTINCT pesticide_name FROM pesticide_limits ORDER BY pesticide_name", conn)
-    conn.close()
-    return df_food['food_type'].tolist(), df_pesticide['pesticide_name'].tolist()
+# 파일이 없을 때 경고
+if df is None:
+    st.error("🚨 'data.csv' 파일을 찾을 수 없습니다!")
+    st.warning("GitHub 저장소에 'data.csv' 파일이 잘 올라가 있는지 확인해주세요.")
+    st.stop()
 
-food_options, pesticide_options = get_lists()
+# --- 3. 목록 만들기 ---
+# DB 쿼리 대신 파이썬으로 목록을 뽑습니다.
+food_list = sorted(df['food_type'].unique().tolist())
+pesticide_list = sorted(df['pesticide_name'].unique().tolist())
 
-# --- 4. 화면 구성 (이전과 동일) ---
+# --- 4. 화면 구성 ---
 st.divider()
+st.write("검사할 식품과 농약을 선택하세요.")
+
 col1, col2 = st.columns(2)
 
 with col1:
-    input_food = st.selectbox("1. 식품 선택", food_options, index=None, placeholder="식품을 선택하세요")
+    input_food = st.selectbox("1. 식품 선택", food_list, index=None, placeholder="식품을 선택하세요")
 
 with col2:
-    input_pesticide = st.selectbox("2. 농약 선택", pesticide_options, index=None, placeholder="농약을 선택하세요")
+    input_pesticide = st.selectbox("2. 농약 선택", pesticide_list, index=None, placeholder="농약을 선택하세요")
 
 input_amount = st.number_input("3. 검출량 (mg/kg)", min_value=0.0, format="%.4f", step=0.001)
 
-# --- 5. 판정 로직 ---
+# --- 5. 판정 로직 (Pandas 필터링) ---
 if st.button("판정하기 🔍", type="primary"):
     if not input_food or not input_pesticide:
         st.warning("식품명과 농약명을 모두 선택해주세요!")
     else:
-        query = text("SELECT limit_mg_kg FROM pesticide_limits WHERE food_type = :food AND pesticide_name = :pesticide")
-        
-        with engine.connect() as conn:
-            result = pd.read_sql(query, conn, params={'food': input_food, 'pesticide': input_pesticide})
+        # ★ 여기가 핵심! SQL 대신 파이썬으로 콕 집어서 찾기
+        # "식품명이 이거고, 농약명이 이거인 행을 찾아라"
+        match = df[
+            (df['food_type'] == input_food) & 
+            (df['pesticide_name'] == input_pesticide)
+        ]
 
-        if result.empty:
+        if match.empty:
             st.error("❌ 기준 데이터를 찾을 수 없습니다.")
+            st.write(f"선택하신 **{input_food}** / **{input_pesticide}** 조합은 목록에 없어요.")
         else:
-            limit = float(result.iloc[0]['limit_mg_kg'])
+            # 기준값 가져오기
+            limit = float(match.iloc[0]['limit_mg_kg'])
             
             st.subheader("📊 판정 결과")
             c1, c2 = st.columns(2)
