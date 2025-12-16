@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- 1. 기본 설정 ---
 st.set_page_config(page_title="잔류농약 판정기", page_icon="🥦", layout="wide")
-st.title("🥦 잔류농약 적합 판정 시스템 (Pro + 자동저장)")
+st.title("🥦 잔류농약 적합 판정 시스템 (Pro + 이력 수정기능)")
 
 # --- 2. 데이터 로딩 ---
 @st.cache_data
@@ -58,7 +58,7 @@ def add_to_history(dept, food, pest, amount, limit, action, note=""):
     )
 
 # --- 4. 탭 메뉴 구성 ---
-tab1, tab2, tab3 = st.tabs(["🔍 개별 판정", "📑 일괄 판정 (자동저장)", "📋 부적합 이력 관리"])
+tab1, tab2, tab3 = st.tabs(["🔍 개별 판정", "📑 일괄 판정", "📋 부적합 이력 관리 (편집가능)"])
 
 # ==========================================
 # [탭 1] 개별 판정
@@ -87,7 +87,6 @@ with tab1:
                     col_res2.metric("내 검출량", f"{input_amount} mg/kg", "부적합", delta_color="inverse")
                     st.error(f"🚨 **부적합!** (기준 {diff:.4f} 초과)")
                     
-                    # 부적합 수동 저장
                     with st.container(border=True):
                         st.write("📝 **부적합 이력 등록**")
                         h_col1, h_col2 = st.columns(2)
@@ -105,13 +104,12 @@ with tab1:
                     st.success("✅ 안전합니다.")
 
 # ==========================================
-# [탭 2] 일괄 판정 (자동 이력 저장 기능 추가)
+# [탭 2] 일괄 판정
 # ==========================================
 with tab2:
     st.header("엑셀 일괄 판정 & 자동 저장")
-    st.info("부적합 건이 발견되면, 아래 입력한 정보로 **자동으로 이력 대장에 저장**됩니다.")
+    st.info("부적합 발생 시 아래 입력된 정보로 **자동 저장**됩니다.")
     
-    # 공통 정보 입력칸 (자동 저장을 위해 미리 입력)
     with st.expander("📝 검사 정보 입력 (필수)", expanded=True):
         bc1, bc2 = st.columns(2)
         with bc1: 
@@ -120,16 +118,16 @@ with tab2:
             batch_action = st.selectbox("부적합 시 조치 내용", ["폐기", "반송", "재검사", "기타"], key="b_act")
 
     example_text = "가지\t가스가마이신\t0.5\n감자\t다이아지논\t0.01"
-    paste_data = st.text_area("데이터 붙여넣기 (식품 / 농약 / 검출량)", height=150, placeholder=example_text)
+    paste_data = st.text_area("데이터 붙여넣기", height=150, placeholder=example_text)
 
     if st.button("일괄 판정 및 자동 저장 🚀", type="primary"):
         if not batch_dept:
-            st.warning("⚠️ 자동 저장을 위해 '의뢰 부서'를 먼저 입력해주세요!")
+            st.warning("⚠️ '의뢰 부서'를 입력해주세요!")
         elif paste_data:
             try:
                 batch_df = pd.read_csv(io.StringIO(paste_data), sep=None, names=['식품', '농약', '검출량'], engine='python')
                 results = []
-                saved_count = 0 # 자동 저장된 건수 카운트
+                saved_count = 0 
                 
                 progress_bar = st.progress(0)
                 
@@ -147,7 +145,6 @@ with tab2:
                         if amt > limit_val:
                             status = "🚨 부적합"
                             note = f"{amt - limit_val:.4f} 초과"
-                            # ★ 여기서 자동 저장! ★
                             add_to_history(batch_dept, f, p, amt, limit_val, batch_action, "일괄검사(자동)")
                             saved_count += 1
                         else:
@@ -158,45 +155,59 @@ with tab2:
 
                 res_df = pd.DataFrame(results, columns=['식품', '농약', '검출량', '기준', '판정', '비고'])
                 
-                # 결과 테이블 표시
                 def color_row(row):
                     return ['background-color: #ffcccc'] * len(row) if "부적합" in row['판정'] else [''] * len(row)
                 
                 st.dataframe(res_df.style.apply(color_row, axis=1), use_container_width=True)
                 
-                # 결과 요약 메시지
                 if saved_count > 0:
-                    st.error(f"🚨 **{saved_count}건의 부적합**이 발견되어 **이력 대장에 자동 저장**되었습니다.")
+                    st.error(f"🚨 **{saved_count}건의 부적합**이 이력 대장에 자동 저장되었습니다.")
                 else:
-                    st.success("🎉 모두 적합합니다! (저장된 이력 없음)")
-                    st.balloons()
+                    st.success("🎉 모두 적합합니다!")
                 
             except Exception as e:
-                st.error(f"데이터 형식 오류: {e}")
+                st.error(f"오류: {e}")
 
 # ==========================================
-# [탭 3] 부적합 이력 관리
+# [탭 3] 부적합 이력 관리 (편집 기능 추가!)
 # ==========================================
 with tab3:
     st.header("📋 부적합 관리 대장")
-    st.info("💡 새로고침하면 사라집니다. 꼭 엑셀로 다운로드하세요!")
+    st.caption("💡 팁: 표 안의 내용을 더블 클릭하면 수정할 수 있습니다! (행 삭제도 가능)")
 
-    history_data = st.session_state['history_df']
-    
-    if history_data.empty:
+    if st.session_state['history_df'].empty:
         st.write("아직 등록된 이력이 없습니다.")
     else:
-        # 최신순으로 보여주기
-        st.dataframe(history_data.iloc[::-1], use_container_width=True)
-        
-        csv_data = history_data.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 대장 엑셀(CSV) 다운로드",
-            data=csv_data,
-            file_name=f"부적합관리대장_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime='text/csv'
+        # ★ 여기가 핵심! data_editor를 사용해 수정 가능하게 변경 ★
+        # num_rows="dynamic"을 넣으면 행 추가/삭제도 가능해집니다.
+        edited_df = st.data_editor(
+            st.session_state['history_df'],
+            use_container_width=True,
+            num_rows="dynamic",
+            key="history_editor"
         )
         
-        if st.button("🗑️ 기록 초기화"):
-            st.session_state['history_df'] = st.session_state['history_df'].iloc[0:0]
-            st.rerun()
+        # 수정된 내용이 있으면 세션에 다시 저장 (동기화)
+        if not edited_df.equals(st.session_state['history_df']):
+            st.session_state['history_df'] = edited_df
+            st.rerun() # 화면 새로고침해서 반영
+
+        st.divider()
+        
+        # 다운로드 버튼
+        csv_data = st.session_state['history_df'].to_csv(index=False).encode('utf-8-sig')
+        col_d1, col_d2 = st.columns([1, 4])
+        
+        with col_d1:
+            st.download_button(
+                label="📥 엑셀(CSV) 저장",
+                data=csv_data,
+                file_name=f"부적합관리대장_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime='text/csv',
+                type="primary"
+            )
+        
+        with col_d2:
+            if st.button("🗑️ 모든 기록 삭제"):
+                st.session_state['history_df'] = st.session_state['history_df'].iloc[0:0]
+                st.rerun()
