@@ -3,51 +3,50 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import os
 
-# 1. 페이지 설정 (탭 이름과 아이콘)
-st.set_page_config(
-    page_title="잔류농약 판정기",
-    page_icon="🥦"
-)
+# --- 1. 기본 설정 ---
+st.set_page_config(page_title="잔류농약 판정기", page_icon="🥦")
+st.title("🥦 잔류농약 적합 판정 시스템 (CSV 버전)")
 
-# 2. 제목 출력
-st.title("🥦 잔류농약 적합 판정 시스템")
-
-# 3. 데이터베이스 파일 확인 (진단 기능)
-db_file = 'pesticide_db.sqlite'
-if not os.path.exists(db_file):
-    st.error("🚨 데이터베이스 파일이 없습니다!")
-    st.warning("GitHub에 'pesticide_db.sqlite' 파일을 올리셨나요? 파일 철자를 확인해주세요.")
-    st.stop()
-
-# 4. 데이터베이스 연결
+# --- 2. 데이터 로딩 (CSV 방식) ---
+# 보안 문제로 DB 파일 대신 CSV(글자 파일)를 읽어서 즉석에서 DB를 만듭니다.
 @st.cache_resource
-def get_connection():
-    return create_engine(f'sqlite:///{db_file}')
+def get_engine_from_csv():
+    csv_file = 'data.csv'
+    
+    if not os.path.exists(csv_file):
+        st.error("🚨 'data.csv' 파일이 없습니다!")
+        st.warning("GitHub에서 'Create new file'을 눌러 data.csv를 만들고 내용을 붙여넣으세요.")
+        st.stop()
+    
+    # CSV 파일을 읽어서 메모리(RAM) 속에 임시 DB를 만듭니다.
+    try:
+        df = pd.read_csv(csv_file)
+        
+        # 기계적인 처리를 위해 메모리 DB 생성
+        engine = create_engine('sqlite:///:memory:')
+        df.to_sql('pesticide_limits', engine, index=False)
+        return engine
+    except Exception as e:
+        st.error(f"데이터 로딩 중 오류 발생: {e}")
+        st.stop()
 
-try:
-    engine = get_connection()
-except Exception as e:
-    st.error(f"데이터베이스 연결 오류: {e}")
-    st.stop()
+# 엔진 가동!
+with st.spinner('데이터를 해독하고 있습니다... ⏳'):
+    engine = get_engine_from_csv()
 
-# 5. 목록 가져오기 (로딩 표시 추가)
+# --- 3. 목록 가져오기 ---
 @st.cache_data
 def get_lists():
     conn = engine.connect()
+    # DISTINCT를 이용해 중복 제거
     df_food = pd.read_sql("SELECT DISTINCT food_type FROM pesticide_limits ORDER BY food_type", conn)
     df_pesticide = pd.read_sql("SELECT DISTINCT pesticide_name FROM pesticide_limits ORDER BY pesticide_name", conn)
     conn.close()
     return df_food['food_type'].tolist(), df_pesticide['pesticide_name'].tolist()
 
-# 로딩 중일 때 스피너 돌리기
-with st.spinner('데이터를 불러오고 있습니다... 잠시만 기다려주세요! ⏳'):
-    try:
-        food_options, pesticide_options = get_lists()
-    except Exception as e:
-        st.error(f"데이터 목록을 가져오지 못했습니다: {e}")
-        st.stop()
+food_options, pesticide_options = get_lists()
 
-# 6. 화면 구성
+# --- 4. 화면 구성 (이전과 동일) ---
 st.divider()
 col1, col2 = st.columns(2)
 
@@ -59,7 +58,7 @@ with col2:
 
 input_amount = st.number_input("3. 검출량 (mg/kg)", min_value=0.0, format="%.4f", step=0.001)
 
-# 7. 판정 로직
+# --- 5. 판정 로직 ---
 if st.button("판정하기 🔍", type="primary"):
     if not input_food or not input_pesticide:
         st.warning("식품명과 농약명을 모두 선택해주세요!")
