@@ -77,8 +77,8 @@ with st.sidebar:
 # --- 3. 메인 헤더 ---
 st.markdown("""
     <div class="top-header">
-        <div class="header-subtitle">LOTTE CENTRAL R&D CENTER | Analysis Research Team</div>
-        <div class="header-title">🥦 잔류농약 적합 판정 및 통합 품질 관리 시스템</div>
+        <div class="header-subtitle">LOTTE R&D CENTER | Analysis Research Team</div>
+        <div class="header-title">🥦 잔류농약 적합 판정 시스템</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -190,10 +190,10 @@ with kpi4: st.metric("시스템 가동률", "99.9%", "Normal")
 st.markdown("---")
 
 # --- 6. 탭 구성 ---
-tab1, tab2, tab3 = st.tabs(["🔬 개별 정밀 검사", "📑 대량 일괄 분석", "📈 통합 관리 대장"])
+tab1, tab2, tab3 = st.tabs(["🔬 개별 정밀 검사", "📑 일괄 분석", "📈 부적합합 관리 대장""�
 
 # ==========================================
-# [TAB 1] 정밀 검사 (버그 수정됨)
+# [TAB 1] 개별 검사 (버그 수정됨)
 # ==========================================
 with tab1:
     with st.container(border=True):
@@ -372,3 +372,4 @@ with tab3:
         with b3:
             csv = edited_df.drop(columns=['선택']).to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 Report 다운로드", csv, f"Report_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+
