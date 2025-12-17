@@ -41,6 +41,7 @@ st.markdown("""
         color: #7f8c8d;
         font-weight: 500;
         margin-bottom: 5px;
+        text-transform: uppercase;
     }
     /* KPI Metric 스타일 */
     div[data-testid="stMetric"] {
@@ -74,11 +75,11 @@ with st.sidebar:
     st.markdown("---")
     st.info("**Support Center**\n\nTel: 02-1234-5678")
 
-# --- 3. 메인 헤더 ---
+# --- 3. 메인 헤더 (수정됨: LOTTE R&D CENTER) ---
 st.markdown("""
     <div class="top-header">
         <div class="header-subtitle">LOTTE R&D CENTER | Analysis Research Team</div>
-        <div class="header-title">🥦 잔류농약 적합 판정 시스템</div>
+        <div class="header-title">🥦 잔류농약 적합 판정 및 통합 품질 관리 시스템</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -89,15 +90,12 @@ COLUMNS = [
     '판정', '조치내용', '적용기준', '비고'
 ]
 
-# 이력 데이터프레임 초기화
 if 'history_df' not in st.session_state:
     st.session_state['history_df'] = pd.DataFrame(columns=COLUMNS)
 
-# ★ 중요: Tab 1 판정 결과를 기억하기 위한 변수 초기화 ★
 if 'analysis_result' not in st.session_state:
     st.session_state['analysis_result'] = None
 
-# 데이터 로딩
 @st.cache_data
 def load_data():
     if not os.path.exists('data.csv'): return None
@@ -116,42 +114,32 @@ if df is None:
 food_list = sorted(df['food_type'].unique().tolist())
 pesticide_list = sorted(df['pesticide_name'].unique().tolist())
 
-# 유틸리티 함수
 def clean_amount(val):
     try: return float(re.sub(r'[^0-9.]', '', str(val)))
     except: return 0.0
 
-# ★ 핵심: 스마트 검색 + 기준 우선순위 로직 ★
 def get_limit_info(df, food, pest_input):
-    # 1. 농약 이름 정규화 (스마트 검색)
-    # 입력한 농약 이름이 DB에 있는지 정확히/부분 일치로 찾음
     exact_pest = df[df['pesticide_name'] == pest_input]
     if not exact_pest.empty:
         target_pest = pest_input
     else:
-        # 부분 일치 검색 (예: Kasuga -> Kasugamycin)
         partial = df[df['pesticide_name'].str.contains(pest_input, case=False, regex=False)]
         if not partial.empty:
-            target_pest = partial.iloc[0]['pesticide_name'] # 첫 번째 매칭되는 정식 명칭 사용
+            target_pest = partial.iloc[0]['pesticide_name']
         else:
-            target_pest = pest_input # 매칭 안 되면 입력값 그대로 사용 (미등록 농약 가정)
+            target_pest = pest_input
 
-    # 2. (식품, 정규화된 농약) 조합으로 기준 검색
-    # 여기서 기존 기준이 있으면 무조건 그게 나옴. 없으면 Empty.
     match = df[(df['food_type'] == food) & (df['pesticide_name'] == target_pest)]
     
     if not match.empty:
-        # 기존 기준 발견! (우선순위 1위)
         limit = float(match.iloc[0]['limit_mg_kg'])
         std_type = "식약처 고시"
     else:
-        # 기준 없음 -> PLS 적용 (우선순위 2위)
         limit = 0.01
         std_type = "PLS (0.01)"
     
     return target_pest, limit, std_type
 
-# 이력 저장 함수
 def add_to_history(dept, food, pest, amount, limit, action, standard, note=""):
     if not dept: dept = "-"
     excess = round(amount - limit, 4) if amount > limit else 0.0
@@ -190,10 +178,10 @@ with kpi4: st.metric("시스템 가동률", "99.9%", "Normal")
 st.markdown("---")
 
 # --- 6. 탭 구성 ---
-tab1, tab2, tab3 = st.tabs(["🔬 개별 정밀 검사", "📑 일괄 분석", "📈 부적합합 관리 대장""�
+tab1, tab2, tab3 = st.tabs(["🔬 개별 정밀 검사", "📑 대량 일괄 분석", "📈 통합 관리 대장"])
 
 # ==========================================
-# [TAB 1] 개별 검사 (버그 수정됨)
+# [TAB 1] 정밀 검사
 # ==========================================
 with tab1:
     with st.container(border=True):
@@ -205,13 +193,9 @@ with tab1:
 
         st.markdown("")
         
-        # 분석 버튼 클릭 시 -> 결과를 Session State에 저장
         if st.button("판정 실행 (Analyze)", type="primary", use_container_width=True):
             if f_in and p_in:
-                # 로직 실행
                 real_pest, limit, std_type = get_limit_info(df, f_in, p_in)
-                
-                # 결과 저장
                 st.session_state['analysis_result'] = {
                     'food': f_in,
                     'pest': real_pest,
@@ -223,10 +207,8 @@ with tab1:
             else:
                 st.warning("⚠️ 분석할 품목과 농약명을 선택하십시오.")
 
-        # 분석 결과가 있으면 화면에 표시 (새로고침 되어도 유지됨)
         if st.session_state['analysis_result']:
             res = st.session_state['analysis_result']
-            
             st.divider()
             r1, r2 = st.columns(2)
             with r1:
@@ -236,7 +218,6 @@ with tab1:
                     diff = res['amount'] - res['limit']
                     st.error(f"**🚨 판정: 부적합**\n\n초과량: +{diff:.4f} mg/kg")
                     
-                    # 부적합일 경우 저장 폼 표시
                     st.markdown("---")
                     with st.container(border=True):
                         st.markdown("**💾 부적합 이력 등록**")
@@ -247,7 +228,6 @@ with tab1:
                         if st.button("통합 대장에 저장"):
                             add_to_history(dept_in, res['food'], res['pest'], res['amount'], res['limit'], act_in, res['std_type'], "정밀검사")
                             st.toast("✅ 통합 대장에 저장되었습니다!", icon="💾")
-                            # 저장 후 결과 초기화 (선택사항)
                             st.session_state['analysis_result'] = None
                             st.rerun()
                 else:
@@ -291,7 +271,6 @@ with tab2:
                             p_raw = str(row['농약']).strip()
                             amt = clean_amount(row['검출량'])
                             
-                            # 로직 통합 호출
                             real_p, limit, std = get_limit_info(df, f, p_raw)
                             
                             status = "✅ 적합"
@@ -327,7 +306,6 @@ with tab3:
     if st.session_state['history_df'].empty:
         st.info("등록된 이력이 없습니다.")
     else:
-        # 차트 (높이 축소)
         with st.container(border=True):
             st.markdown("###### 📊 Trend Analysis")
             chart_df = st.session_state['history_df'].copy()
@@ -335,13 +313,12 @@ with tab3:
             
             cc1, cc2 = st.columns(2)
             with cc1:
-                st.caption("📅 월별 발생 추이")
+                st.caption("📅 월별 부적합 발생 추이")
                 st.bar_chart(chart_df['월'].value_counts().sort_index(), color="#DA291C", height=150)
             with cc2:
-                st.caption("🧪 품목별 빈도 (Top 5)")
+                st.caption("🧪 품목별 위반 빈도 (Top 5)")
                 st.bar_chart(chart_df['식품명'].value_counts().head(5), height=150)
 
-        # 상세 대장
         st.markdown("###### 📑 Master Data Grid")
         view_df = st.session_state['history_df'][COLUMNS]
 
@@ -372,4 +349,3 @@ with tab3:
         with b3:
             csv = edited_df.drop(columns=['선택']).to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 Report 다운로드", csv, f"Report_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
-
