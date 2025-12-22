@@ -97,7 +97,7 @@ with st.sidebar:
 st.markdown("""
     <div class="top-header">
         <div class="header-subtitle">LOTTE R&D CENTER | Analysis Research Team</div>
-        <div class="header-title">🥦 잔류농약 적합 판정 및 통합 품질 관리 시스템</div>
+        <div class="header-title">🥦 잔류농약 판정 및 부적합 관리 시스템</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -408,3 +408,4 @@ with t5:
             if st.button("Yes"): clear_all_db(); st.session_state['confirm']=False; st.rerun()
             if st.button("No"): st.session_state['confirm']=False; st.rerun()
     else: st.info("데이터 없음")
+
