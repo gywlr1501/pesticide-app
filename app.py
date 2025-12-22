@@ -101,7 +101,16 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 5. Logic & Data ---
+# --- 5. Logic & Data (오류 수정됨) ---
+# 숫자만 추출하는 강력한 함수
+def clean_amount(val):
+    try: 
+        # 문자열로 변환 후 0-9와 .(점)만 남기고 다 삭제
+        clean_str = re.sub(r'[^0-9.]', '', str(val))
+        if not clean_str: return 0.0 # 빈 값이면 0.0 반환
+        return float(clean_str)
+    except: return 0.0
+
 @st.cache_data
 def load_data():
     if not os.path.exists('data.csv'): return None
@@ -119,19 +128,23 @@ food_list = sorted(df['food_type'].unique().tolist())
 pesticide_list = sorted(df['pesticide_name'].unique().tolist())
 MOISTURE_DB = {"고추": {"raw": 83.0, "dried": 14.0}, "마늘": {"raw": 65.0, "dried": 10.0}, "양파": {"raw": 90.0, "dried": 12.0}}
 
+# ★ [핵심 수정] 기준값 가져올 때 에러 방지 처리 추가 ★
 def get_limit_info(df, food, pest_input):
     exact_pest = df[df['pesticide_name'] == pest_input]
     target_pest = pest_input if not exact_pest.empty else pest_input
     if exact_pest.empty:
         partial = df[df['pesticide_name'].str.contains(pest_input, case=False, regex=False)]
         if not partial.empty: target_pest = partial.iloc[0]['pesticide_name']
+    
     match = df[(df['food_type'] == food) & (df['pesticide_name'] == target_pest)]
-    if not match.empty: return target_pest, float(match.iloc[0]['limit_mg_kg']), "식약처 고시"
-    else: return target_pest, 0.01, "PLS (0.01)"
-
-def clean_amount(val):
-    try: return float(re.sub(r'[^0-9.]', '', str(val)))
-    except: return 0.0
+    
+    if not match.empty: 
+        # ★ 여기서 에러가 났었습니다. clean_amount로 감싸서 해결! ★
+        raw_val = match.iloc[0]['limit_mg_kg']
+        limit_val = clean_amount(raw_val)
+        return target_pest, limit_val, "식약처 고시"
+    else: 
+        return target_pest, 0.01, "PLS (0.01)"
 
 # --- 6. Dashboard ---
 hist = load_history_db()
@@ -141,7 +154,7 @@ k1, k2, k3, k4 = st.columns(4)
 with k1: st.metric("누적 부적합", f"{len(hist)}건", delta=f"금일 +{today_cnt}")
 with k2: st.metric("Risk 부서", hist['의뢰부서'].mode()[0] if not hist.empty else "-", "High")
 with k3: st.metric("주요 품목", hist['식품명'].mode()[0] if not hist.empty else "-", "Check")
-with k4: st.metric("시스템", "v4.0 Final", "Stable")
+with k4: st.metric("시스템 상태", "Stable", "v4.1 Fixed")
 st.markdown("---")
 
 # --- 7. Tabs ---
@@ -151,7 +164,6 @@ t1, t2, t3, t4, t5 = st.tabs(["🔬 정밀 검사", "🌭 가공식품(건조)",
 with t1:
     col_info, col_main = st.columns([1, 2])
     with col_info:
-        # 1번 요청: 구체적인 설명
         st.markdown("""
         <div class="info-box">
         <b>📘 기준 적용 원칙</b><br><br>
@@ -179,8 +191,6 @@ with t1:
             if st.session_state.get('ar'):
                 r = st.session_state['ar']
                 st.divider()
-                
-                # 2번 요청: 상세 결과 표시
                 st.markdown("###### 🧾 분석 결과 상세")
                 rc1, rc2 = st.columns(2)
                 with rc1:
@@ -214,13 +224,8 @@ with t2:
         <b>📘 수분 보정 기준 (식약처)</b><br><br>
         건조 등으로 수분 함량이 변화된 경우, 원료의 기준에 수분 감소비율(농축배수)을 곱하여 환산합니다.<br><br>
         <b>[계산 공식]</b><br>
-        $$
-        \\text{계수} = \\frac{100 - \\text{건조수분}}{100 - \\text{원물수분}}
-        $$
-        <br>
-        $$
-        \\text{환산기준} = \\text{원물기준} \\times \\text{계수}
-        $$
+        $$ \\text{계수} = \\frac{100 - \\text{건조수분}}{100 - \\text{원물수분}} $$ <br>
+        $$ \\text{환산기준} = \\text{원물기준} \\times \\text{계수} $$
         </div>
         """, unsafe_allow_html=True)
 
