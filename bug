@@ -1,0 +1,26 @@
+import pandas as pd
+import os
+import streamlit as st
+
+# --- 디버깅용 코드 시작 ---
+file_name = 'data.csv'
+
+# 1. 파일이 진짜 그 자리에 있는지 확인
+if not os.path.exists(file_name):
+    st.error(f"🚨 파일 찾기 실패: 현재 위치({os.getcwd()})에 '{file_name}' 파일이 없습니다.")
+    st.write("📂 현재 폴더 파일 목록:", os.listdir(os.getcwd())) # 현재 폴더에 뭐가 있는지 다 보여줌
+else:
+    # 2. 파일이 있다면 읽기 시도 (에러나면 이유 출력)
+    try:
+        # 먼저 cp949(한글)로 시도
+        df = pd.read_csv(file_name, encoding='cp949')
+        st.success("✅ 파일 읽기 성공! (cp949)")
+    except Exception as e1:
+        try:
+            # 실패하면 utf-8로 재시도
+            df = pd.read_csv(file_name, encoding='utf-8')
+            st.success("✅ 파일 읽기 성공! (utf-8)")
+        except Exception as e2:
+            # 둘 다 실패하면 진짜 에러 메시지 출력
+            st.error(f"❌ 파일은 있지만 읽을 수 없음. 에러 내용:\n1차 시도: {e1}\n2차 시도: {e2}")
+# --- 디버깅용 코드 끝 ---
