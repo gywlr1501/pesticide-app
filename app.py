@@ -115,7 +115,7 @@ def clean_amount(val):
 def load_data():
     if not os.path.exists('data.csv'): return None
     try:
-        df = pd.read_csv('data.csv')
+        df = pd.read_csv('data.csv', encoding='cp949')
         df['food_type'] = df['food_type'].astype(str).str.strip()
         df['pesticide_name'] = df['pesticide_name'].astype(str).str.strip()
         return df
@@ -408,4 +408,5 @@ with t5:
             if st.button("Yes"): clear_all_db(); st.session_state['confirm']=False; st.rerun()
             if st.button("No"): st.session_state['confirm']=False; st.rerun()
     else: st.info("데이터 없음")
+
 
