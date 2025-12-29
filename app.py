@@ -101,7 +101,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 5. Logic & Data (오류 수정됨) ---
+# --- 5. Logic & Data (여기가 수정됨!) ---
 # 숫자만 추출하는 강력한 함수
 def clean_amount(val):
     try: 
@@ -111,24 +111,46 @@ def clean_amount(val):
         return float(clean_str)
     except: return 0.0
 
+# [수정된 부분] 인코딩 자동 감지 및 에러 표시 기능 추가
 @st.cache_data
 def load_data():
-    if not os.path.exists('data.csv'): return None
-    try:
-        df = pd.read_csv('data.csv', encoding='cp949')
-        df['food_type'] = df['food_type'].astype(str).str.strip()
-        df['pesticide_name'] = df['pesticide_name'].astype(str).str.strip()
-        return df
-    except: return None
+    csv_file = 'data.csv'
+    
+    # 1. 파일 존재 여부 확인
+    if not os.path.exists(csv_file):
+        st.error(f"🚨 파일이 서버 경로에 없습니다. 현재 경로: {os.getcwd()}")
+        return None
+
+    df = None
+    # 2. 인코딩 3단 변신 (utf-8 -> cp949 -> euc-kr)
+    encodings = ['utf-8', 'cp949', 'euc-kr']
+    
+    for enc in encodings:
+        try:
+            df = pd.read_csv(csv_file, encoding=enc)
+            # 읽기 성공하면 데이터 정제 후 리턴
+            df['food_type'] = df['food_type'].astype(str).str.strip()
+            df['pesticide_name'] = df['pesticide_name'].astype(str).str.strip()
+            return df
+        except UnicodeDecodeError:
+            continue # 인코딩 안 맞으면 다음 걸로 시도
+        except Exception as e:
+            # 인코딩 외 다른 문제라면 에러 출력
+            st.error(f"❌ 파일을 읽는 중 에러 발생 ({enc}): {e}")
+            return None
+
+    # 3. 모든 인코딩 실패 시
+    st.error("❌ 파일은 있지만 읽을 수 없습니다. (csv 인코딩을 확인하세요)")
+    return None
 
 df = load_data()
-if df is None: st.error("🚨 data.csv 없음"); st.stop()
+if df is None: st.stop() # 에러 메시지는 위에서 출력했으므로 멈추기만 함
 
 food_list = sorted(df['food_type'].unique().tolist())
 pesticide_list = sorted(df['pesticide_name'].unique().tolist())
 MOISTURE_DB = {"고추": {"raw": 83.0, "dried": 14.0}, "마늘": {"raw": 65.0, "dried": 10.0}, "양파": {"raw": 90.0, "dried": 12.0}}
 
-# ★ [핵심 수정] 기준값 가져올 때 에러 방지 처리 추가 ★
+# 기준값 가져오기 함수
 def get_limit_info(df, food, pest_input):
     exact_pest = df[df['pesticide_name'] == pest_input]
     target_pest = pest_input if not exact_pest.empty else pest_input
@@ -139,7 +161,6 @@ def get_limit_info(df, food, pest_input):
     match = df[(df['food_type'] == food) & (df['pesticide_name'] == target_pest)]
     
     if not match.empty: 
-        # ★ 여기서 에러가 났었습니다. clean_amount로 감싸서 해결! ★
         raw_val = match.iloc[0]['limit_mg_kg']
         limit_val = clean_amount(raw_val)
         return target_pest, limit_val, "식약처 고시"
@@ -408,5 +429,3 @@ with t5:
             if st.button("Yes"): clear_all_db(); st.session_state['confirm']=False; st.rerun()
             if st.button("No"): st.session_state['confirm']=False; st.rerun()
     else: st.info("데이터 없음")
-
-
