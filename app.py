@@ -101,7 +101,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 5. Logic & Data (여기가 수정됨!) ---
+# --- 5. Logic & Data (핵심 수정 완료) ---
 # 숫자만 추출하는 강력한 함수
 def clean_amount(val):
     try: 
@@ -111,7 +111,7 @@ def clean_amount(val):
         return float(clean_str)
     except: return 0.0
 
-# [수정된 부분] 인코딩 자동 감지 및 에러 표시 기능 추가
+# [수정됨] CSV 파일 읽기 오류 해결 버전 (sep=None 적용)
 @st.cache_data
 def load_data():
     csv_file = 'data.csv'
@@ -127,20 +127,25 @@ def load_data():
     
     for enc in encodings:
         try:
-            df = pd.read_csv(csv_file, encoding=enc)
-            # 읽기 성공하면 데이터 정제 후 리턴
-            df['food_type'] = df['food_type'].astype(str).str.strip()
-            df['pesticide_name'] = df['pesticide_name'].astype(str).str.strip()
-            return df
-        except UnicodeDecodeError:
-            continue # 인코딩 안 맞으면 다음 걸로 시도
-        except Exception as e:
-            # 인코딩 외 다른 문제라면 에러 출력
-            st.error(f"❌ 파일을 읽는 중 에러 발생 ({enc}): {e}")
-            return None
+            # ★ 핵심 수정: sep=None, engine='python'으로 구분자 자동 감지 ★
+            df = pd.read_csv(csv_file, encoding=enc, sep=None, engine='python')
+            
+            # 컬럼명 공백 제거 (안전장치)
+            df.columns = df.columns.str.strip()
+
+            # 필수 컬럼이 있는지 확인 (엉뚱하게 읽히는 것 방지)
+            if 'food_type' in df.columns and 'pesticide_name' in df.columns:
+                df['food_type'] = df['food_type'].astype(str).str.strip()
+                df['pesticide_name'] = df['pesticide_name'].astype(str).str.strip()
+                return df
+            else:
+                continue # 인코딩은 맞는데 내용이 깨진 경우 다음 시도
+                
+        except Exception:
+            continue # 읽기 에러나면 다음 인코딩 시도
 
     # 3. 모든 인코딩 실패 시
-    st.error("❌ 파일은 있지만 읽을 수 없습니다. (csv 인코딩을 확인하세요)")
+    st.error("❌ 파일을 읽을 수 없습니다. (CSV 형식이 훼손되었거나 호환되지 않습니다)")
     return None
 
 df = load_data()
